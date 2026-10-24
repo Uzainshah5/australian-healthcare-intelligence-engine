@@ -1,0 +1,24 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+
+# Testing & logs
+.pytest_cache/
+logs/*.log
+
+# Database & Runtime local artifacts
+data/checkpoints.db
+data/checkpoints.db-wal
+data/checkpoints.db-shm
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,19 @@
+# Core Scraping & Automation
+playwright>=1.42.0
+
+# Data Validation & Serialization
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# AI & Structured LLM Calling
+google-genai>=0.1.1
+openai>=1.14.0
+
+# Formatting & Logging
+rich>=13.7.0
+loguru>=0.7.2
+pyyaml>=6.0.1
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

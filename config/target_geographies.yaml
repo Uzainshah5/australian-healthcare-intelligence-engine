@@ -1,0 +1,36 @@
+# Target geographic zones for responsible, polite extraction
+# Selected Primary Health Network / Suburb cluster: Sydney Inner West, CBD & Eastern Suburbs
+regions:
+  - name: "Sydney Metro Cluster"
+    state: "NSW"
+    suburbs:
+      - name: "Sydney"
+        postcode: "2000"
+        suburb_slug: "sydney-NSW-2000"
+      - name: "Surry Hills"
+        postcode: "2010"
+        suburb_slug: "surry-hills-NSW-2010"
+      - name: "Newtown"
+        postcode: "2042"
+        suburb_slug: "newtown-NSW-2042"
+      - name: "Marrickville"
+        postcode: "2204"
+        suburb_slug: "marrickville-NSW-2204"
+      - name: "Bondi Junction"
+        postcode: "2022"
+        suburb_slug: "bondi-junction-NSW-2022"
+      - name: "Randwick"
+        postcode: "2031"
+        suburb_slug: "randwick-NSW-2031"
+      - name: "Parramatta"
+        postcode: "2150"
+        suburb_slug: "parramatta-NSW-2150"
+      - name: "Chatswood"
+        postcode: "2067"
+        suburb_slug: "chatswood-NSW-2067"
+
+# Target sample volume bounds
+limits:
+  target_records: 60
+  max_records: 75
+

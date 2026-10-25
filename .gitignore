@@ -22,3 +22,8 @@ data/checkpoints.db-shm
 .idea/
 .DS_Store
 Thumbs.db
+
+# Frontend build & dependencies
+frontend/node_modules/
+frontend/dist/
+

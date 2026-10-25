@@ -148,20 +148,51 @@ python -m pytest tests/ -v
 │       ├── database.py              # SQLite WAL mode initialization
 │       ├── checkpoints.py           # Queue and resumption manager
 │       └── exporters.py             # CSV and JSON dataset export utilities
+├── frontend/                        # React + TypeScript + Vite Intelligence Dashboard
+│   ├── src/
+│   │   ├── App.tsx                  # Interactive dashboard with filters, search, table & modal
+│   │   ├── App.css                  # Layout, typography and responsive dashboard styling
+│   │   ├── index.css                # Glassmorphism design system & token definitions
+│   │   └── data/practices.json      # Bundled 537 validated Australian GP dataset
+│   └── public/data/                 # Public downloadable dataset
+├── scripts/
+│   └── ingest_large_dataset.py      # High-performance pipeline ingesting 500+ records
 ├── tests/
 │   ├── test_cleaners.py             # Unit tests for Australian phone/postcode cleaners
 │   ├── test_schemas.py              # Unit tests for Pydantic schema validation
 │   └── test_ai_enrichment.py        # Unit tests for AI semantic parsing and scoring
 └── data/
     ├── demo_data.json               # Synthetic evaluation dataset
-    └── exports/                     # Generated CSV and JSON exports
+    └── exports/                     # Generated CSV and JSON exports (537 records)
 ```
 
 ---
 
-## 7. Two-Minute Video Presentation Script Outline
+## 7. Interactive React Intelligence Dashboard
+
+A modern, glassmorphic React dashboard is included in `/frontend` to present the **537 validated Australian GP clinics** to business stakeholders and hiring managers:
+
+* **Executive KPI Cards**: Real-time metrics for total practices, High Opportunity Fit count, Bulk-Billing adoption rate, and modern booking software penetration.
+* **Geographic Distribution Analytics**: Visual bar chart breakdown across all 7 Australian states and territories (VIC, NSW, QLD, WA, SA, TAS, ACT).
+* **Medicare & Software Breakdown**: Visual insights into billing models (Mixed vs. Bulk vs. Private) and online booking platform adoption (HotDoc, Healthengine, Phone-only).
+* **Search & Multi-Filter Command Center**: Real-time text search across clinic names, suburbs, addresses, and 4-digit postcodes, with instant filters for state, billing type, booking platform, and accessibility.
+* **Interactive Data Table**: Sortable columns, paginated views (15/25/50/100 per page), direct `tel:` dialing links, and color-coded opportunity fit progress bars.
+* **B2B Lead Detail Drawer & Pitch Copier**: Deep inspection modal featuring physical address, phone, website, opening hours, Medicare evidence citation, and a **1-click copyable personalized B2B outreach hook**.
+* **Filtered Exports**: 1-click browser exports to filtered CSV and JSON.
+
+### Launching the Dashboard:
+```powershell
+cd frontend
+npm run dev
+# Dashboard opens at http://127.0.0.1:5173/
+```
+
+---
+
+## 8. Two-Minute Video Presentation Script Outline
 
 * **0:00 – 0:25 (The Growth Problem)**: Introduce the business objective: transforming fragmented Australian GP clinic data into an automated B2B growth and lead intelligence engine.
-* **0:25 – 0:55 (Technical Browser Scraping)**: Show terminal logs and Playwright in action navigating geographic listings with polite jitter, strict practice-level locators, and checkpointing.
-* **0:55 – 1:30 (Targeted AI & Prompt Engineering)**: Highlight the deterministic vs. AI boundary. Show how the LLM resolves complex mixed-billing Medicare policies and standardizes opening hours into strict Pydantic models.
-* **1:30 – 2:00 (Growth Deliverable & Compliance)**: Show the generated CSV/JSON output featuring the **Opportunity Fit Score** and personalized outreach hook. Conclude with the ethical framework: zero personal doctor data harvested, 100% compliant with Australian Privacy Principles and Spam Act 2003.
+* **0:25 – 0:50 (Technical Browser Scraping & Ethics)**: Show terminal logs and Playwright in action navigating geographic listings with polite jitter, strict practice-level locators, and checkpointing. Highlight ethical guardrails: zero personal doctor data harvested, 100% compliant with Australian Privacy Principles and Spam Act 2003.
+* **0:50 – 1:20 (Targeted AI & Growth Scoring)**: Highlight the deterministic vs. AI boundary. Show how the LLM resolves complex mixed-billing Medicare policies, standardizes opening hours into strict Pydantic models, and calculates the objective 0–100 B2B Opportunity Score.
+* **1:20 – 2:00 (React Frontend Dashboard Walkthrough)**: Showcase the live React dashboard running at `http://127.0.0.1:5173/`, demonstrate the interactive search across 537 clinics, click "View Lead" on a high-opportunity practice, and copy the automated B2B outreach hook. Conclude with the exported CSV/JSON deliverables.
+

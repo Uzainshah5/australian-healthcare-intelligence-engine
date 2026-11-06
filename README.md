@@ -106,11 +106,27 @@ Evaluators can instantly seed the SQLite database with verified synthetic record
 python main.py --demo
 ```
 
-### 3. Run Live Scraping Pipeline
-Executes live polite Playwright discovery and extraction on Sydney GP directories:
+### 3. Run Dynamic Live Web Scraping Pipeline
+Every time you run the pipeline, it automatically discovers and scrapes fresh, unvisited clinics across Australian suburbs, enriches them with AI, appends them to SQLite, and syncs the React dashboard:
+
 ```bash
+# 1. Default Dynamic Run: Automatically visits next uncrawled Australian suburbs and scrapes 10 fresh clinics
 python main.py
+
+# 2. Custom Batch Size: Discover and scrape 25 new clinics in one go
+python main.py --limit 25
+
+# 3. Target a Specific City/Suburb: Scrape Melbourne, Brisbane, Adelaide, etc.
+python main.py --suburb melbourne-VIC-3000
+python main.py --suburb brisbane-QLD-4000
+python main.py --suburb perth-WA-6000
+
+# 4. Target a Specific State: Crawl all suburbs in Queensland or Victoria
+python main.py --state QLD
+python main.py --state VIC
 ```
+
+> **Instant Dashboard Sync**: Every run automatically exports to `data/exports/` AND updates `frontend/src/data/practices.json`, so your React dashboard reflects newly added clinics immediately.
 
 ### 4. Run Automated Test Suite
 Executes unit tests for phone normalizers, address regex, Pydantic schemas, and AI enrichment:

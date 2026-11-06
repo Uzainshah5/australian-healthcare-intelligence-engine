@@ -41,3 +41,48 @@ def test_growth_opportunity_scorer():
     assert score == 100.0
     assert "Newtown" in hook
     assert "phone" in hook.lower()
+
+def test_phone_verification_matching_state():
+    client = LLMEnrichmentClient()
+    res = client._semantic_fallback(
+        raw_billing="Private billing",
+        raw_hours="9-5",
+        raw_cues="",
+        practice_name="Sydney Medical Practice",
+        suburb="Sydney",
+        state="NSW",
+        phone="+61292001234"
+    )
+    assert res.phone_verified is True
+    assert res.phone_type == "landline"
+    assert "NSW" in res.phone_verification_notes
+
+def test_phone_verification_mismatched_state():
+    client = LLMEnrichmentClient()
+    res = client._semantic_fallback(
+        raw_billing="Bulk billing",
+        raw_hours="9-5",
+        raw_cues="",
+        practice_name="Melbourne Health",
+        suburb="Melbourne",
+        state="VIC",
+        phone="+61730001234"  # 07 is QLD, not VIC
+    )
+    assert res.phone_verified is False
+    assert "Area code mismatch" in res.phone_verification_notes
+
+def test_phone_verification_mobile_and_placeholder():
+    client = LLMEnrichmentClient()
+    mobile_res = client._semantic_fallback(
+        raw_billing="", raw_hours="", raw_cues="",
+        state="QLD", phone="+61412345678"
+    )
+    assert mobile_res.phone_verified is True
+    assert mobile_res.phone_type == "mobile"
+
+    placeholder_res = client._semantic_fallback(
+        raw_billing="", raw_hours="", raw_cues="",
+        state="NSW", phone="+61290000000"
+    )
+    assert placeholder_res.phone_verified is False
+    assert placeholder_res.phone_type == "invalid"

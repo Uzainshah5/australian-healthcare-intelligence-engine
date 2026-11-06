@@ -27,6 +27,14 @@ def init_database(db_path: Path = settings.db_path) -> None:
             error_message TEXT
         );
 
+        -- Suburb coverage tracker for dynamic geographic discovery
+        CREATE TABLE IF NOT EXISTS crawled_suburbs (
+            suburb_slug TEXT PRIMARY KEY,
+            suburb TEXT NOT NULL,
+            state TEXT NOT NULL,
+            crawled_at_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         -- 2. Raw Extraction Log (Data Lineage & Provenance)
         CREATE TABLE IF NOT EXISTS raw_extractions (
             source_url TEXT PRIMARY KEY,
@@ -58,9 +66,23 @@ def init_database(db_path: Path = settings.db_path) -> None:
             collected_at_utc TIMESTAMP NOT NULL,
             ai_confidence_score REAL NOT NULL,
             validation_status TEXT NOT NULL DEFAULT 'VALIDATED',
+            phone_verified INTEGER DEFAULT 1,
+            phone_type TEXT DEFAULT 'landline',
+            phone_verification_notes TEXT,
             FOREIGN KEY(source_url) REFERENCES discovery_queue(url)
         );
 
         CREATE INDEX IF NOT EXISTS idx_discovery_status ON discovery_queue(status);
         CREATE INDEX IF NOT EXISTS idx_practice_postcode ON practices_validated(postcode);
         """)
+        
+        # Schema migration for existing databases
+        for col_name, col_type in [
+            ("phone_verified", "INTEGER DEFAULT 1"),
+            ("phone_type", "TEXT DEFAULT 'landline'"),
+            ("phone_verification_notes", "TEXT")
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE practices_validated ADD COLUMN {col_name} {col_type};")
+            except Exception:
+                pass

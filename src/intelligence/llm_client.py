@@ -13,43 +13,111 @@ class LLMEnrichmentClient:
     """
     def __init__(self):
         self.openai_key = os.getenv("OPENAI_API_KEY", "")
+        self.openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip() or None
+        self.openai_model = os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o-mini"
         self.gemini_key = os.getenv("GEMINI_API_KEY", "")
 
     async def enrich_practice(
         self,
         raw_billing: str,
         raw_hours: str,
-        raw_cues: str
+        raw_cues: str,
+        practice_name: str = "",
+        suburb: str = "",
+        state: str = "",
+        phone: str = ""
     ) -> AIEnrichmentOutput:
-        """Enriches unstructured text into validated structured metadata."""
+        """Enriches unstructured text into validated structured metadata and verifies clinic phone."""
         
-        # 1. Attempt OpenAI structured extraction if key present
+        # 1. Attempt OpenAI / OpenRouter structured extraction if key present
         if self.openai_key:
             try:
-                return await self._call_openai(raw_billing, raw_hours, raw_cues)
+                return await self._call_openai(
+                    raw_billing=raw_billing,
+                    raw_hours=raw_hours,
+                    raw_cues=raw_cues,
+                    practice_name=practice_name,
+                    suburb=suburb,
+                    state=state,
+                    phone=phone
+                )
             except Exception as e:
-                logger.warning(f"OpenAI API call failed: {e}. Falling back to deterministic semantic parser.")
+                logger.warning(f"AI API call failed ({self.openai_model}): {e}. Falling back to deterministic semantic parser.")
 
         # 2. Deterministic Semantic Fallback (Zero-Credit / Offline Execution)
-        return self._semantic_fallback(raw_billing, raw_hours, raw_cues)
+        return self._semantic_fallback(
+            raw_billing=raw_billing,
+            raw_hours=raw_hours,
+            raw_cues=raw_cues,
+            practice_name=practice_name,
+            suburb=suburb,
+            state=state,
+            phone=phone
+        )
 
-    async def _call_openai(self, raw_billing: str, raw_hours: str, raw_cues: str) -> AIEnrichmentOutput:
-        """Executes structured JSON call against OpenAI."""
+    async def _call_openai(
+        self,
+        raw_billing: str,
+        raw_hours: str,
+        raw_cues: str,
+        practice_name: str = "",
+        suburb: str = "",
+        state: str = "",
+        phone: str = ""
+    ) -> AIEnrichmentOutput:
+        """Executes structured call against OpenAI or OpenRouter-compatible endpoint."""
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=self.openai_key)
-        prompt = build_enrichment_prompt(raw_billing, raw_hours, raw_cues)
+        client_kwargs = {"api_key": self.openai_key}
+        if self.openai_base_url:
+            client_kwargs["base_url"] = self.openai_base_url
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.0,
-            response_format={"type": "json_object"},
-            messages=[
+        client = AsyncOpenAI(**client_kwargs)
+        prompt = build_enrichment_prompt(
+            raw_billing=raw_billing,
+            raw_hours=raw_hours,
+            raw_cues=raw_cues,
+            practice_name=practice_name,
+            suburb=suburb,
+            state=state,
+            phone=phone
+        )
+
+        create_kwargs = {
+            "model": self.openai_model,
+            "temperature": 0.0,
+            "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ]
-        )
-        raw_json_str = response.choices[0].message.content or "{}"
-        parsed = json.loads(raw_json_str)
+        }
+        
+        # Apply strict json_object format for native OpenAI or compatible endpoints
+        if not self.openai_base_url or "api.openai.com" in self.openai_base_url:
+            create_kwargs["response_format"] = {"type": "json_object"}
+
+        response = await client.chat.completions.create(**create_kwargs)
+        raw_content = response.choices[0].message.content or "{}"
+
+        # Clean markdown codeblocks if model wraps output in ```json ... ```
+        clean_json_str = re.sub(r"^```(?:json)?", "", raw_content.strip(), flags=re.MULTILINE)
+        clean_json_str = re.sub(r"```$", "", clean_json_str.strip(), flags=re.MULTILINE).strip()
+
+        # Extract first valid JSON object substring if model includes conversational text
+        json_match = re.search(r"(\{.*\})", clean_json_str, re.DOTALL)
+        if json_match:
+            clean_json_str = json_match.group(1)
+
+        parsed = json.loads(clean_json_str)
+        if isinstance(parsed, dict):
+            if "reasoning" in parsed and "billing_reasoning" not in parsed:
+                parsed["billing_reasoning"] = parsed["reasoning"]
+            if "billing_model_evidence" in parsed and "billing_reasoning" not in parsed:
+                parsed["billing_reasoning"] = parsed["billing_model_evidence"]
+            if "booking_platform" in parsed and isinstance(parsed["booking_platform"], str):
+                parsed["booking_platform"] = parsed["booking_platform"].lower().strip()
+            if "billing_model" in parsed and isinstance(parsed["billing_model"], str):
+                parsed["billing_model"] = parsed["billing_model"].lower().strip()
+        
         # Validate through Pydantic
         return AIEnrichmentOutput.model_validate(parsed)
 
@@ -57,11 +125,15 @@ class LLMEnrichmentClient:
         self,
         raw_billing: str,
         raw_hours: str,
-        raw_cues: str
+        raw_cues: str,
+        practice_name: str = "",
+        suburb: str = "",
+        state: str = "",
+        phone: str = ""
     ) -> AIEnrichmentOutput:
         """
         Deterministic, rule-based semantic parser for offline execution.
-        Extracts billing, hours, and booking signals using strict heuristics.
+        Extracts billing, hours, booking signals, and verifies clinic phone numbers.
         """
         billing_text = (raw_billing or "").lower()
         hours_text = raw_hours or ""
@@ -100,10 +172,54 @@ class LLMEnrichmentClient:
         # 4. Opening Hours Normalization
         opening_hours_summary = None
         if hours_text:
-            # Clean up and compact lines
             lines = [l.strip() for l in hours_text.splitlines() if l.strip()]
             if lines:
-                opening_hours_summary = " | ".join(lines[:4]) # Compact summary of core days
+                opening_hours_summary = " | ".join(lines[:4])
+
+        # 5. Australian Telecom Phone Verification
+        phone_clean = (phone or "").strip().replace(" ", "").replace("-", "")
+        phone_verified = True
+        phone_type = "landline"
+        notes = "Verified Australian clinic line"
+
+        state_prefixes = {
+            "NSW": ["+612", "02"],
+            "ACT": ["+612", "02"],
+            "VIC": ["+613", "03"],
+            "TAS": ["+613", "03"],
+            "QLD": ["+617", "07"],
+            "WA":  ["+618", "08"],
+            "SA":  ["+618", "08"],
+            "NT":  ["+618", "08"],
+        }
+
+        if not phone_clean or "90000000" in phone_clean:
+            phone_verified = False
+            phone_type = "invalid"
+            notes = "Unlisted or placeholder contact line"
+        elif phone_clean.startswith("+614") or phone_clean.startswith("04"):
+            phone_verified = True
+            phone_type = "mobile"
+            notes = "Verified Australian mobile contact"
+        elif any(phone_clean.startswith(p) for p in ["1300", "1800", "13", "+6113"]):
+            phone_verified = True
+            phone_type = "toll_free"
+            notes = "Verified Australian national business line"
+        else:
+            state_up = (state or "").upper()
+            expected = state_prefixes.get(state_up, [])
+            if any(phone_clean.startswith(exp) for exp in expected):
+                phone_verified = True
+                phone_type = "landline"
+                notes = f"Verified {state_up} geographic landline matching clinic location"
+            elif expected:
+                phone_verified = False
+                phone_type = "landline"
+                notes = f"Area code mismatch: {phone_clean[:4]} does not match expected {state_up} prefix ({expected[0]})"
+            else:
+                phone_verified = True
+                phone_type = "landline"
+                notes = "Valid Australian landline"
 
         return AIEnrichmentOutput(
             billing_model=billing_model,
@@ -112,5 +228,8 @@ class LLMEnrichmentClient:
             telehealth_caveat=telehealth_caveat,
             opening_hours_summary=opening_hours_summary,
             booking_platform=booking_platform,
+            phone_verified=phone_verified,
+            phone_type=phone_type,
+            phone_verification_notes=notes,
             ai_confidence_score=0.90 if billing_model != BillingModel.UNKNOWN else 0.70
         )

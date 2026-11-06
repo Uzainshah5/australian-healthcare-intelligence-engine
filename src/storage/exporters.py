@@ -12,11 +12,18 @@ def fetch_all_validated_practices() -> List[Dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 def export_to_json(filepath: Path = settings.exports_dir / "practices_dataset.json") -> Path:
-    """Exports validated practices to clean JSON format."""
+    """Exports validated practices to clean JSON format and updates React dashboard dataset."""
     data = fetch_all_validated_practices()
     filepath.parent.mkdir(parents=True, exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+    
+    # Keep React dashboard synchronously updated
+    frontend_data_path = settings.project_root / "frontend" / "src" / "data" / "practices.json"
+    if frontend_data_path.parent.exists():
+        with open(frontend_data_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            
     return filepath
 
 def export_to_csv(filepath: Path = settings.exports_dir / "practices_dataset.csv") -> Path:
@@ -28,7 +35,7 @@ def export_to_csv(filepath: Path = settings.exports_dir / "practices_dataset.csv
         # Create empty CSV with headers
         fieldnames = [
             "practice_id", "practice_name", "practice_address", "suburb", "state", "postcode",
-            "phone_main", "website_url", "billing_model", "billing_model_evidence",
+            "phone_main", "phone_verified", "phone_type", "phone_verification_notes", "website_url", "billing_model", "billing_model_evidence",
             "telehealth_available", "wheelchair_accessible", "opening_hours_summary",
             "booking_platform", "opportunity_score", "growth_outreach_hook",
             "source_url", "collected_at_utc", "ai_confidence_score", "validation_status"

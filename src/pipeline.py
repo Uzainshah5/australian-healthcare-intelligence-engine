@@ -47,12 +47,15 @@ class ScrapingIntelligencePipeline:
     Master pipeline orchestrator coordinating Discovery, Extraction,
     Cleaning, Validation, Deduplication, AI Enrichment, Persistence, and Export.
     """
-    def __init__(self):
+    def __init__(self, batch_size: int = 15, custom_suburb: str = None, filter_state: str = None):
         self.browser_manager = BrowserManager()
         self.crawler = DiscoveryCrawler(self.browser_manager)
         self.parser = PracticeParser()
         self.llm_client = LLMEnrichmentClient()
         self.existing_ids = set()
+        self.batch_size = batch_size
+        self.custom_suburb = custom_suburb
+        self.filter_state = filter_state
 
     async def run(self) -> None:
         """Executes the complete end-to-end data intelligence pipeline."""
@@ -68,14 +71,19 @@ class ScrapingIntelligencePipeline:
         page = await self.browser_manager.new_page()
 
         try:
-            # 3. Discovery Stage
-            with console.status("[bold green]Stage 1: Discovering practice listings across target geographies...[/bold green]"):
-                total_discovered = await self.crawler.run_discovery(page)
+            # 3. Dynamic Discovery Stage
+            with console.status(f"[bold green]Stage 1: Discovering new practices across Australian regions (Target: {self.batch_size} new)...[/bold green]"):
+                newly_discovered = await self.crawler.run_discovery(
+                    page,
+                    target_new=self.batch_size,
+                    custom_suburb=self.custom_suburb,
+                    filter_state=self.filter_state
+                )
 
             # 4. Extraction & Intelligence Loop
-            pending_items = get_pending_queue(limit=settings.target_sample_size)
+            pending_items = get_pending_queue(limit=self.batch_size)
             if not pending_items:
-                console.print("[yellow]No pending practice URLs to scrape. Pipeline is up to date.[/yellow]")
+                console.print("[yellow]No pending practice URLs in queue to extract. All discovered practices are up to date.[/yellow]")
             else:
                 console.print(f"[bold blue]Stage 2: Commencing extraction for {len(pending_items)} practices (Polite Jitter Active)...[/bold blue]")
                 
@@ -173,11 +181,15 @@ class ScrapingIntelligencePipeline:
                 mark_queue_status(url, "DUPLICATE_SKIPPED")
                 return
 
-            # Targeted AI Enrichment
+            # Targeted AI Enrichment & Phone Verification
             enrichment = await self.llm_client.enrich_practice(
                 raw_billing=raw_billing_snippet,
                 raw_hours=clean_hours or "",
-                raw_cues="HotDoc online booking"
+                raw_cues="HotDoc online booking",
+                practice_name=clean_name,
+                suburb=suburb,
+                state=state,
+                phone=clean_phone
             )
 
             # Growth Opportunity Scoring
@@ -199,6 +211,9 @@ class ScrapingIntelligencePipeline:
                 state=state,
                 postcode=postcode,
                 phone_main=clean_phone,
+                phone_verified=enrichment.phone_verified,
+                phone_type=enrichment.phone_type,
+                phone_verification_notes=enrichment.phone_verification_notes,
                 website_url=clean_website,
                 billing_model=enrichment.billing_model,
                 billing_model_evidence=enrichment.billing_reasoning,

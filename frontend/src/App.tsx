@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './App.css';
 import rawPracticesData from './data/practices.json';
 import {
@@ -19,7 +19,10 @@ import {
   TrendingUp,
   X,
   Layers,
-  ArrowUpDown
+  ArrowUpDown,
+  PlusCircle,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 
 export interface PracticeRecord {
@@ -30,6 +33,9 @@ export interface PracticeRecord {
   state: string;
   postcode: string;
   phone_main: string;
+  phone_verified?: boolean | number;
+  phone_type?: string;
+  phone_verification_notes?: string;
   website_url?: string;
   billing_model: string;
   billing_model_evidence?: string;
@@ -46,7 +52,70 @@ export interface PracticeRecord {
 }
 
 export const App: React.FC = () => {
-  const practices: PracticeRecord[] = rawPracticesData as PracticeRecord[];
+  const [practices, setPractices] = useState<PracticeRecord[]>(rawPracticesData as PracticeRecord[]);
+  const [isScraping, setIsScraping] = useState<boolean>(false);
+  const [scrapeFeedback, setScrapeFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string; addedCount?: number } | null>(null);
+
+  // Fetch latest practices from backend API if available
+  useEffect(() => {
+    fetch('/api/practices')
+      .then(res => {
+        if (!res.ok) throw new Error('API server offline');
+        return res.json();
+      })
+      .then((data: PracticeRecord[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPractices(data);
+        }
+      })
+      .catch(() => {
+        // Fall back gracefully to bundled practices.json
+      });
+  }, []);
+
+  const handleAddMoreRecords = async (batchCount: number = 5) => {
+    if (isScraping) return;
+    setIsScraping(true);
+    setScrapeFeedback({
+      type: 'info',
+      message: `Triggering live scraping & AI verification engine for ${batchCount} new Australian clinics...`
+    });
+
+    try {
+      const response = await fetch('/api/scrape-more', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: batchCount })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Scraper server error' }));
+        throw new Error(errorData.detail || `Server responded with ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (Array.isArray(result.practices) && result.practices.length > 0) {
+        setPractices(result.practices);
+      }
+      setScrapeFeedback({
+        type: 'success',
+        message: result.message || `Successfully scraped & enriched ${result.added_count} new Australian medical practices!`,
+        addedCount: result.added_count
+      });
+
+      // Auto-clear feedback after 6 seconds
+      setTimeout(() => {
+        setScrapeFeedback(null);
+      }, 6000);
+    } catch (err: any) {
+      setScrapeFeedback({
+        type: 'error',
+        message: `Failed to scrape more records: ${err?.message || 'Check if python server.py is running'}`
+      });
+    } finally {
+      setIsScraping(false);
+    }
+  };
 
   // Filter & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -246,13 +315,33 @@ export const App: React.FC = () => {
               <span>•</span>
               <span className="telemetry-pill">
                 <span className="pulse-dot"></span>
-                537 Validated Clinics Active
+                {practices.length} Validated Clinics Active
               </span>
             </p>
           </div>
         </div>
 
         <div className="header-actions">
+          <button
+            id="add-more-records-btn"
+            onClick={() => handleAddMoreRecords(5)}
+            className="btn btn-scrape-add"
+            disabled={isScraping}
+            title="Scrape and AI-enrich new Australian GP records dynamically from the web"
+          >
+            {isScraping ? (
+              <>
+                <Loader2 size={16} className="spin-animation" />
+                <span>Scraping Net...</span>
+              </>
+            ) : (
+              <>
+                <PlusCircle size={16} />
+                <span>Add More Records</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={() => setShowArchitectureModal(true)}
             className="btn btn-secondary"
@@ -273,6 +362,30 @@ export const App: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* Dynamic Scrape Feedback Banner */}
+      {scrapeFeedback && (
+        <div className={`scrape-banner ${scrapeFeedback.type}`}>
+          <div className="scrape-banner-content">
+            {scrapeFeedback.type === 'info' && <Loader2 size={18} className="spin-animation banner-icon" />}
+            {scrapeFeedback.type === 'success' && <CheckCircle2 size={18} className="banner-icon" />}
+            {scrapeFeedback.type === 'error' && <AlertCircle size={18} className="banner-icon" />}
+            <span>{scrapeFeedback.message}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {scrapeFeedback.addedCount !== undefined && scrapeFeedback.addedCount > 0 && (
+              <span className="badge-new-records">+{scrapeFeedback.addedCount} Added</span>
+            )}
+            <button
+              onClick={() => setScrapeFeedback(null)}
+              className="banner-close-btn"
+              title="Dismiss notification"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Top KPI Stat Cards */}
       <section className="kpi-grid">
@@ -649,6 +762,17 @@ export const App: React.FC = () => {
                         <Phone size={13} />
                         <span>{practice.phone_main}</span>
                       </a>
+                      <div style={{ marginTop: '4px' }}>
+                        {practice.phone_verified !== false ? (
+                          <span style={{ fontSize: '0.68rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.12)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.25)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            ✓ AI Verified
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.68rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.12)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.25)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            ⚠ Unverified
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Billing Model */}
@@ -792,6 +916,17 @@ export const App: React.FC = () => {
                   <Phone size={14} />
                   <span>{selectedPractice.phone_main}</span>
                 </a>
+                <div style={{ marginTop: '6px', fontSize: '0.74rem', color: selectedPractice.phone_verified !== false ? '#34d399' : '#f87171', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>{selectedPractice.phone_verified !== false ? '✓ AI Verified Line' : '⚠ Unverified Number'}</span>
+                  {selectedPractice.phone_type && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.70rem' }}>({selectedPractice.phone_type})</span>
+                  )}
+                </div>
+                {selectedPractice.phone_verification_notes && (
+                  <div style={{ fontSize: '0.70rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                    {selectedPractice.phone_verification_notes}
+                  </div>
+                )}
               </div>
 
               <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>

@@ -32,8 +32,10 @@ class Settings(BaseSettings):
     exports_dir: Path = PROJECT_ROOT / "data" / "exports"
     config_dir: Path = PROJECT_ROOT / "config"
     
-    # AI API keys (optional fallback / mock support)
+    # AI API keys & endpoints (OpenAI, OpenRouter, Groq, Gemini)
     openai_api_key: str = ""
+    openai_base_url: str = ""
+    openai_model: str = "gpt-4o-mini"
     gemini_api_key: str = ""
     
     class Config:

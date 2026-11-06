@@ -88,11 +88,11 @@ def save_validated_practice(record: ValidatedPracticeRecord) -> None:
             """
             INSERT OR REPLACE INTO practices_validated (
                 practice_id, practice_name, practice_address, suburb, state, postcode,
-                phone_main, website_url, billing_model, billing_model_evidence,
+                phone_main, phone_verified, phone_type, phone_verification_notes, website_url, billing_model, billing_model_evidence,
                 telehealth_available, wheelchair_accessible, opening_hours_summary,
                 booking_platform, opportunity_score, growth_outreach_hook,
                 source_url, collected_at_utc, ai_confidence_score, validation_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 record.practice_id,
@@ -102,6 +102,9 @@ def save_validated_practice(record: ValidatedPracticeRecord) -> None:
                 record.state,
                 record.postcode,
                 record.phone_main,
+                1 if record.phone_verified else 0,
+                record.phone_type,
+                record.phone_verification_notes,
                 record.website_url,
                 record.billing_model.value,
                 record.billing_model_evidence,
@@ -140,3 +143,21 @@ def get_pipeline_telemetry() -> Dict:
             "pending": pending,
             "validated_records": validated
         }
+
+def get_crawled_suburbs() -> Set[str]:
+    """Returns set of suburb slugs that have already been crawled."""
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT suburb_slug FROM crawled_suburbs")
+        return {row["suburb_slug"] for row in cursor.fetchall()}
+
+def record_crawled_suburb(suburb_slug: str, suburb: str, state: str) -> None:
+    """Records that a suburb has been crawled."""
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO crawled_suburbs (suburb_slug, suburb, state, crawled_at_utc)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (suburb_slug, suburb, state)
+        )
+

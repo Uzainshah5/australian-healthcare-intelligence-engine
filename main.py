@@ -70,13 +70,40 @@ def run_demo_mode():
     console.print(f"  - CSV: [cyan]{csv_path}[/cyan]")
     console.print(f"  - JSON: [cyan]{json_path}[/cyan]\n")
 
+import argparse
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Australian GP Healthcare Intelligence & Dynamic Web Scraping Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                     # Dynamically discover & scrape next uncrawled Australian suburbs (default: 10)
+  python main.py --limit 20          # Discover & scrape 20 fresh clinic records
+  python main.py --suburb melbourne-VIC-3000   # Scrape specific suburb
+  python main.py --state QLD         # Focus on Queensland medical centres
+  python main.py --demo              # Load offline synthetic demonstration records
+        """
+    )
+    parser.add_argument("--demo", "-d", "--mock", action="store_true", help="Run offline evaluation mode with synthetic records")
+    parser.add_argument("--limit", "-n", type=int, default=10, help="Number of new practices to discover & scrape (default: 10)")
+    parser.add_argument("--suburb", "-s", type=str, default=None, help="Target specific suburb slug (e.g. 'melbourne-VIC-3000', 'brisbane-QLD-4000')")
+    parser.add_argument("--state", type=str, default=None, help="Filter target geographies by state code (e.g. 'NSW', 'VIC', 'QLD', 'WA', 'SA')")
+    return parser.parse_args()
+
 async def main():
     setup_logging()
-    if len(sys.argv) > 1 and sys.argv[1] in ("--demo", "-d", "--mock"):
+    args = parse_args()
+
+    if args.demo:
         run_demo_mode()
         return
 
-    pipeline = ScrapingIntelligencePipeline()
+    pipeline = ScrapingIntelligencePipeline(
+        batch_size=args.limit,
+        custom_suburb=args.suburb,
+        filter_state=args.state
+    )
     await pipeline.run()
 
 if __name__ == "__main__":

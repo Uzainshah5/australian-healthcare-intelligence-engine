@@ -6,12 +6,18 @@ from loguru import logger
 from playwright.async_api import Page
 from config.settings import settings
 from src.extraction.browser_manager import BrowserManager
-from src.storage.checkpoints import add_to_discovery_queue, save_raw_extraction, get_pipeline_telemetry
+from src.storage.checkpoints import (
+    add_to_discovery_queue,
+    save_raw_extraction,
+    get_pipeline_telemetry,
+    get_crawled_suburbs,
+    record_crawled_suburb
+)
 
 class DiscoveryCrawler:
     """
-    Crawls geographic search pages on HotDoc to discover practice URLs
-    and initial practice-level metadata, populating the SQLite queue.
+    Crawls geographic search pages across Australian suburbs to discover practice URLs
+    and initial practice-level metadata, dynamically populating the SQLite queue.
     """
     def __init__(self, browser_manager: BrowserManager):
         self.browser_manager = browser_manager
@@ -25,74 +31,103 @@ class DiscoveryCrawler:
             data = yaml.safe_load(f)
             return data.get("regions", [])
 
-    async def run_discovery(self, page: Page) -> int:
+    async def run_discovery(
+        self,
+        page: Page,
+        target_new: int = 15,
+        custom_suburb: str = None,
+        filter_state: str = None
+    ) -> int:
         """
-        Executes discovery across configured target suburbs.
-        Returns total newly discovered practice records.
+        Executes dynamic discovery across uncrawled target suburbs.
+        Discovers at least `target_new` fresh practice records per run.
         """
+        logger.info(f"Initiating dynamic discovery session (Targeting {target_new} new clinics)...")
         regions = self.load_geographies()
-        current_stats = get_pipeline_telemetry()
+        crawled_slugs = get_crawled_suburbs()
         
-        # Check if we already have sufficient discovered practices
-        if current_stats["total_discovered"] >= settings.target_sample_size:
-            logger.info(
-                f"Discovery queue already contains {current_stats['total_discovered']} records. "
-                "Skipping discovery phase."
-            )
-            return current_stats["total_discovered"]
-
-        logger.info(f"Starting discovery crawl for target sample size: {settings.target_sample_size}...")
-
-        for region in regions:
-            state = region.get("state", "NSW")
-            suburbs = region.get("suburbs", [])
-
-            for sub in suburbs:
-                suburb_name = sub.get("name", "Sydney")
-                suburb_slug = sub.get("suburb_slug", f"{suburb_name.lower()}-{state}-2000")
-                search_url = f"{settings.base_url}/search?in={suburb_slug}&for=general-practice"
-
-                logger.info(f"Navigating to search page: {search_url} ({suburb_name}, {state})")
-                
-                try:
-                    await self.browser_manager.polite_sleep()
-                    response = await page.goto(search_url, wait_until="commit")
-                    self.browser_manager.check_response_status(response, search_url)
-
-                    # Wait 6 seconds for Ember SPA to hydrate practice cards
-                    await page.wait_for_timeout(6000)
-
-                    # Extract practice cards
-                    discovered_items = await self._extract_cards_from_page(page)
-                    logger.info(f"Discovered {len(discovered_items)} practice cards for {suburb_name}.")
-
-                    # Enqueue URLs and cache raw card text
-                    for item in discovered_items:
-                        full_url = item["url"]
-                        raw_payload = {
-                            "practice_name_raw": item["name"],
-                            "address_raw": item["address"],
-                            "opening_hours_raw": item["hours"],
-                            "source_url": full_url,
-                            "suburb": suburb_name,
-                            "state": state,
-                            "raw_card_text": item["raw_text"]
-                        }
-                        if add_to_discovery_queue(full_url, suburb_name, state):
-                            save_raw_extraction(full_url, raw_payload)
-                            
-                    telemetry = get_pipeline_telemetry()
-                    if telemetry["total_discovered"] >= settings.target_sample_size:
-                        logger.info(f"Reached target sample size ({telemetry['total_discovered']} records).")
-                        return telemetry["total_discovered"]
-
-                except Exception as e:
-                    logger.warning(f"Error exploring {search_url}: {e}")
+        # Build prioritized suburb list
+        suburbs_to_crawl = []
+        
+        if custom_suburb:
+            # Custom suburb passed by user (e.g. melbourne-VIC-3000 or Brisbane)
+            suburb_clean = custom_suburb.strip()
+            state_match = re.search(r"-(NSW|VIC|QLD|WA|SA|TAS|ACT)-\d{4}", suburb_clean, re.I)
+            state_code = state_match.group(1).upper() if state_match else "NSW"
+            suburbs_to_crawl.append({
+                "name": suburb_clean.split("-")[0].replace("_", " ").title(),
+                "suburb_slug": suburb_clean if "-" in suburb_clean else f"{suburb_clean.lower()}-{state_code}-2000",
+                "state": state_code
+            })
+        else:
+            # Gather all suburbs from regions
+            for region in regions:
+                state = region.get("state", "NSW")
+                if filter_state and state.upper() != filter_state.upper():
                     continue
+                for sub in region.get("suburbs", []):
+                    suburbs_to_crawl.append({
+                        "name": sub.get("name", "Sydney"),
+                        "suburb_slug": sub.get("suburb_slug", f"{sub.get('name', 'sydney').lower()}-{state}-2000"),
+                        "state": state
+                    })
+            
+            # Prioritize suburbs that have NOT been crawled yet
+            uncrawled = [s for s in suburbs_to_crawl if s["suburb_slug"] not in crawled_slugs]
+            if uncrawled:
+                suburbs_to_crawl = uncrawled
+            else:
+                logger.info("All configured suburbs have been visited at least once. Cycling through for new listings...")
 
-        final_stats = get_pipeline_telemetry()
-        logger.info(f"Discovery phase completed. Total records in queue: {final_stats['total_discovered']}.")
-        return final_stats["total_discovered"]
+        newly_enqueued = 0
+
+        for sub in suburbs_to_crawl:
+            suburb_name = sub["name"]
+            suburb_slug = sub["suburb_slug"]
+            state = sub["state"]
+            search_url = f"{settings.base_url}/search?in={suburb_slug}&for=general-practice"
+
+            logger.info(f"Discovering: {suburb_name}, {state} ({search_url})")
+
+            try:
+                await self.browser_manager.polite_sleep()
+                response = await page.goto(search_url, wait_until="commit")
+                self.browser_manager.check_response_status(response, search_url)
+
+                # Wait for SPA cards to hydrate
+                await page.wait_for_timeout(5000)
+
+                # Extract practice cards
+                discovered_items = await self._extract_cards_from_page(page)
+                record_crawled_suburb(suburb_slug, suburb_name, state)
+                logger.info(f"Discovered {len(discovered_items)} practice cards in {suburb_name}.")
+
+                # Enqueue URLs
+                for item in discovered_items:
+                    full_url = item["url"]
+                    raw_payload = {
+                        "practice_name_raw": item["name"],
+                        "address_raw": item["address"],
+                        "opening_hours_raw": item["hours"],
+                        "source_url": full_url,
+                        "suburb": suburb_name,
+                        "state": state,
+                        "raw_card_text": item["raw_text"]
+                    }
+                    if add_to_discovery_queue(full_url, suburb_name, state):
+                        save_raw_extraction(full_url, raw_payload)
+                        newly_enqueued += 1
+
+                if newly_enqueued >= target_new:
+                    logger.info(f"Achieved target batch size (+{newly_enqueued} new practices enqueued). Proceeding to extraction.")
+                    break
+
+            except Exception as e:
+                logger.warning(f"Error exploring {search_url}: {e}")
+                continue
+
+        logger.info(f"Discovery phase completed. {newly_enqueued} fresh records queued for extraction.")
+        return newly_enqueued
 
     async def _extract_cards_from_page(self, page: Page) -> list:
         """

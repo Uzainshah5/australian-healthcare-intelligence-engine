@@ -289,3 +289,111 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease forwards;
 }
+
+/* Add More Records Button */
+.btn-scrape-add {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.btn-scrape-add:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-scrape-add:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+/* Scraping Feedback Notification Banner */
+.scrape-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  animation: slideDown 0.3s ease-out;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.scrape-banner.info {
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  color: #38bdf8;
+}
+
+.scrape-banner.success {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+
+.scrape-banner.error {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.banner-close-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: opacity 0.2s;
+}
+
+.banner-close-btn:hover {
+  opacity: 1;
+}
+
+.scrape-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.banner-icon {
+  flex-shrink: 0;
+}
+
+.badge-new-records {
+  background: rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.spin-animation {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

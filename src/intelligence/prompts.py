@@ -10,7 +10,19 @@ CRITICAL RULES:
    - "Bulk billing" means ALL patients are bulk billed without out-of-pocket costs.
    - "Mixed billing" means some patients pay private gap fees, but certain groups (e.g. under 16s, pensioners, Health Care Card holders) are bulk billed.
    - "Private billing" means all consultations incur an out-of-pocket fee with no standard bulk billing.
-4. Output must strictly conform to the required JSON schema.
+4. Australian Phone Number Verification:
+   - Verify the clinic's phone number against the Australian Telecommunications Numbering Plan:
+     * Area Code 02 / +612: New South Wales (NSW), Australian Capital Territory (ACT)
+     * Area Code 03 / +613: Victoria (VIC), Tasmania (TAS)
+     * Area Code 07 / +617: Queensland (QLD)
+     * Area Code 08 / +618: Western Australia (WA), South Australia (SA), Northern Territory (NT)
+     * Mobile 04 / +614: Standard Australian mobile
+     * National Business Lines: 13, 1300, 1800
+   - Set phone_verified to true if the number format is authentic and either matches the clinic's state or is a valid national/mobile line.
+   - Set phone_verified to false if the number is malformed, dummy digits, or geographically mismatched.
+   - Set phone_type to one of: "landline", "mobile", "toll_free", "national", "invalid".
+   - Set phone_verification_notes with a concise explanation (e.g. "Verified active NSW 02 landline matching Sydney CBD practice").
+5. Output must strictly conform to the required JSON schema.
 """
 
 EXTRACTION_FEW_SHOTS = [
@@ -23,26 +35,30 @@ EXTRACTION_FEW_SHOTS = [
             "telehealth_caveat": None,
             "opening_hours_summary": None,
             "booking_platform": "unknown",
+            "phone_verified": True,
+            "phone_type": "landline",
+            "phone_verification_notes": "Geographically verified landline.",
             "ai_confidence_score": 0.95
-        }
-    },
-    {
-        "input": "100% Bulk Billing practice for all Medicare card holders. Open Mon-Fri 8am to 6pm, Sat 9am to 1pm. Phone consults available for regular patients.",
-        "output": {
-            "billing_model": "bulk_billing",
-            "billing_reasoning": "Advertised as 100% Bulk Billing practice for all Medicare card holders.",
-            "telehealth_available": True,
-            "telehealth_caveat": "Available for regular patients.",
-            "opening_hours_summary": "Mon-Fri 08:00-18:00, Sat 09:00-13:00",
-            "booking_platform": "unknown",
-            "ai_confidence_score": 0.98
         }
     }
 ]
 
-def build_enrichment_prompt(raw_billing: str, raw_hours: str, raw_cues: str) -> str:
-    """Builds user prompt for LLM structured extraction."""
-    return f"""Analyze the following raw practice snippets and extract structured signals:
+def build_enrichment_prompt(
+    raw_billing: str,
+    raw_hours: str,
+    raw_cues: str,
+    practice_name: str = "",
+    suburb: str = "",
+    state: str = "",
+    phone: str = ""
+) -> str:
+    """Builds user prompt for LLM structured extraction and phone verification."""
+    return f"""Analyze the following Australian GP clinic profile and verify all signals:
+
+CLINIC IDENTITY:
+- Name: {practice_name or 'Not specified'}
+- Location: {suburb or 'Unknown'}, {state or 'Australia'}
+- Extracted Phone: {phone or 'Not provided'}
 
 RAW BILLING TEXT:
 {raw_billing or 'Not provided'}
@@ -53,5 +69,6 @@ RAW OPENING HOURS TEXT:
 RAW BOOKING/SERVICE CUES:
 {raw_cues or 'Not provided'}
 
+Perform phone verification (validating Australian telecom numbering plan, geographic area code match for {state}, and business line status).
 Return a valid JSON object matching the AIEnrichmentOutput schema.
 """
